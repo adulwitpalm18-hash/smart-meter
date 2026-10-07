@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Meter Web Bluetooth</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; background-color: #f4f4f9; margin: 0; padding: 20px; }
+    .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
+    h2 { color: #333; margin-bottom: 5px; }
+    .val { font-size: 45px; font-weight: bold; color: #007bff; margin: 15px 0; }
+    .unit { font-size: 25px; color: #555; font-weight: normal; }
+    .status { font-size: 18px; color: #555; padding: 8px; border-radius: 8px; background: #eef2f5; display: inline-block; margin-bottom: 15px; }
+    .btn { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; margin: 5px 0; width: 100%; }
+    .btn:active { transform: scale(0.98); }
+    .btn-hold { background: #ffc107; color: #222; display: none; }
+    .btn-mode { background: #17a2b8; display: none; }
+    .btn-disconnect { background: #dc3545; display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Smart Meter Box</h2>
+    <p>Web Bluetooth Dashboard</p>
+    
+    <button id="connectBtn" class="btn" onclick="connectBluetooth()">Connect Bluetooth</button>
+    <button id="disconnectBtn" class="btn btn-disconnect" onclick="disconnectBluetooth()">Disconnect</button>
+
+    <div class="val"><span id="distVal">0.00</span> <span id="unitVal" class="unit">cm</span></div>
+    <div class="status" id="modeStatus">Status: Disconnected</div>
+    <br>
+
+    <!-- ปุ่มควบคุมผ่าน Bluetooth -->
+    <button id="holdBtn" class="btn btn-hold" onclick="sendCmd('A')">Hold / Save (Button A)</button>
+    <button id="modeBtn" class="btn btn-mode" onclick="sendCmd('B')">Switch Mode (Button B)</button>
+  </div>
+
+  <script>
+    const serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const characteristicUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    
+    let bluetoothDevice;
+    let bleCharacteristic;
+
+    async function connectBluetooth() {
+      try {
+        document.getElementById('modeStatus').innerText = "Connecting...";
+        
+        bluetoothDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'SmartMeter_BLE' }],
+          optionalServices: [serviceUuid]
+        });
+
+        const server = await bluetoothDevice.gatt.connect();
+        const service = await server.getPrimaryService(serviceUuid);
+        bleCharacteristic = await service.getCharacteristic(characteristicUuid);
+        
+        await bleCharacteristic.startNotifications();
+        bleCharacteristic.addEventListener('characteristicvaluechanged', handleData);
+        
+        // แสดงปุ่มควบคุมเมื่อเชื่อมต่อสำเร็จ
+        document.getElementById('connectBtn').style.display = 'none';
+        document.getElementById('disconnectBtn').style.display = 'block';
+        document.getElementById('holdBtn').style.display = 'block';
+        document.getElementById('modeBtn').style.display = 'block';
+        document.getElementById('modeStatus').innerText = "Connected!";
+      } catch (error) {
+        console.log("Error:", error);
+        document.getElementById('modeStatus').innerText = "Connection Failed";
+      }
+    }
+
+    // ฟังก์ชันส่งคำสั่งกดปุ่มผ่าน Bluetooth
+    async function sendCmd(cmd) {
+      if (bleCharacteristic) {
+        const encoder = new TextEncoder();
+        await bleCharacteristic.writeValue(encoder.encode(cmd));
+      }
+    }
+
+    function handleData(event) {
+      const decoder = new TextDecoder('utf-8');
+      const dataString = decoder.decode(event.target.value);
+      
+      const parts = dataString.split('|');
+      if (parts.length === 3) {
+        document.getElementById('distVal').innerText = parts[0];
+        document.getElementById('unitVal').innerText = parts[1];
+        document.getElementById('modeStatus').innerText = parts[2];
+      }
+    }
+
+    function disconnectBluetooth() {
+      if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+        bluetoothDevice.gatt.disconnect();
+      }
+      document.getElementById('connectBtn').style.display = 'block';
+      document.getElementById('disconnectBtn').style.display = 'none';
+      document.getElementById('holdBtn').style.display = 'none';
+      document.getElementById('modeBtn').style.display = 'none';
+      document.getElementById('modeStatus').innerText = "Disconnected";
+      document.getElementById('distVal').innerText = "0.00";
+      document.getElementById('unitVal').innerText = "cm";
+    }
+  </script>
+</body>
+</html>
